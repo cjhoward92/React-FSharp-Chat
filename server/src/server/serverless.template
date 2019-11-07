@@ -31,10 +31,50 @@
 				"IntegrationUri": { "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnConnectFunction.Arn}/invocations"}
 			}
 		},
+		"DisconnectRoute": {
+			"Type": "AWS::ApiGatewayV2::Route",
+			"Properties": {
+				"ApiId": { "Ref": "ReactChat" },
+				"RouteKey": "$disconnect",
+				"AuthorizationType": "NONE",
+				"OperationName": "DisconnectRoute",
+				"Target": { "Fn::Join": ["/", ["integrations", { "Ref": "DisconnectInteg" }]] }
+			}
+		},
+		"DisconnectInteg": {
+			"Type": "AWS::ApiGatewayV2::Integration",
+			"Properties": {
+				"ApiId": {"Ref": "ReactChat"},
+				"Description": "Disconnect Integration",
+				"IntegrationType": "AWS_PROXY",
+				"IntegrationUri": { "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnDisconnectFunction.Arn}/invocations"}
+			}
+		},
+		"SendRoute": {
+			"Type": "AWS::ApiGatewayV2::Route",
+			"Properties": {
+				"ApiId": { "Ref": "ReactChat" },
+				"RouteKey": "sendmessage",
+				"AuthorizationType": "NONE",
+				"OperationName": "SendRoute",
+				"Target": { "Fn::Join": ["/", ["integrations", { "Ref": "SendInteg" }]] }
+			}
+		},
+		"SendInteg": {
+			"Type": "AWS::ApiGatewayV2::Integration",
+			"Properties": {
+				"ApiId": {"Ref": "ReactChat"},
+				"Description": "Send Integration",
+				"IntegrationType": "AWS_PROXY",
+				"IntegrationUri": { "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnSendFunction.Arn}/invocations"}
+			}
+		},
 		"Deployment": {
 			"Type": "AWS::ApiGatewayV2::Deployment",
 			"DependsOn": [
-				"ConnectRoute"
+				"ConnectRoute",
+				"DisconnectRoute",
+				"SendRoute"
 			],
 			"Properties": {
 				"ApiId": {"Ref": "ReactChat"}
@@ -57,6 +97,7 @@
 				"CodeUri": "",
 				"MemorySize": 256,
 				"Role": null,
+				"Timeout": 15,
 				"Policies": [ "AWSLambdaBasicExecutionRole" ]
 			}
 		},
@@ -69,6 +110,67 @@
 			"Properties": {
 				"Action": "lambda:InvokeFunction",
 				"FunctionName": {"Ref": "OnConnectFunction"},
+				"Principal": "apigateway.amazonaws.com"
+			}
+		},
+		"OnDisconnectFunction" : {
+			"Type" : "AWS::Serverless::Function",
+			"Properties": {
+				"Handler": "server::server.Functions::OnDisconnect",
+				"Runtime": "dotnetcore2.1",
+				"CodeUri": "",
+				"MemorySize": 256,
+				"Role": null,
+				"Timeout": 15,
+				"Policies": [ "AWSLambdaBasicExecutionRole" ]
+			}
+		},
+		"OnDisconnectPermission": {
+			"Type": "AWS::Lambda::Permission",
+			"DependsOn": [
+				"ReactChat",
+				"OnDisconnectFunction"
+			],
+			"Properties": {
+				"Action": "lambda:InvokeFunction",
+				"FunctionName": {"Ref": "OnDisconnectFunction"},
+				"Principal": "apigateway.amazonaws.com"
+			}
+		},
+		"OnSendFunction" : {
+			"Type" : "AWS::Serverless::Function",
+			"Properties": {
+				"Handler": "server::server.Functions::SendMessage",
+				"Runtime": "dotnetcore2.1",
+				"CodeUri": "",
+				"MemorySize": 256,
+				"Role": null,
+				"Timeout": 90,
+				"Policies": [
+					"AWSLambdaBasicExecutionRole",
+					{
+						"Statement": {
+							"Effect": "Allow",
+							"Action": [
+								"execute-api:ManageConnections"
+							],
+							"Resource": [
+								{"Fn::Sub": "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ReactChat}/*"}
+							]
+						}
+					}
+				]
+			}
+		},
+		"OnSendPermission": {
+			"Type": "AWS::Lambda::Permission",
+			"DependsOn": [
+				"ReactChat",
+				"OnSendFunction"
+			],
+			"Properties": {
+				"Action": "lambda:InvokeFunction",
+				"FunctionName": {"Ref": "OnSendFunction"},
 				"Principal": "apigateway.amazonaws.com"
 			}
 		}
