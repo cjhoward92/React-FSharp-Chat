@@ -1,0 +1,83 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Transform" : "AWS::Serverless-2016-10-31",
+	"Description" : "An AWS Serverless Application.",
+
+	"Resources" : {
+		"ReactChat": {
+			"Type": "AWS::ApiGatewayV2::Api",
+			"Properties": {
+				"Name": "ReactChat",
+				"ProtocolType": "WEBSOCKET",
+				"RouteSelectionExpression": "$request.body.action"
+			}
+		},
+		"ConnectRoute": {
+			"Type": "AWS::ApiGatewayV2::Route",
+			"Properties": {
+				"ApiId": { "Ref": "ReactChat" },
+				"RouteKey": "$connect",
+				"AuthorizationType": "NONE",
+				"OperationName": "ConnectRoute",
+				"Target": { "Fn::Join": ["/", ["integrations", { "Ref": "ConnectInteg" }]] }
+			}
+		},
+		"ConnectInteg": {
+			"Type": "AWS::ApiGatewayV2::Integration",
+			"Properties": {
+				"ApiId": {"Ref": "ReactChat"},
+				"Description": "Connect Integration",
+				"IntegrationType": "AWS_PROXY",
+				"IntegrationUri": { "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OnConnectFunction.Arn}/invocations"}
+			}
+		},
+		"Deployment": {
+			"Type": "AWS::ApiGatewayV2::Deployment",
+			"DependsOn": [
+				"ConnectRoute"
+			],
+			"Properties": {
+				"ApiId": {"Ref": "ReactChat"}
+			}
+		},
+		"Stage": {
+			"Type": "AWS::ApiGatewayV2::Stage",
+			"Properties": {
+				"ApiId": {"Ref": "ReactChat"},
+				"StageName": "Prod",
+				"Description": "Prod Stage",
+				"DeploymentId": {"Ref": "Deployment"}
+			}
+		},
+		"OnConnectFunction" : {
+			"Type" : "AWS::Serverless::Function",
+			"Properties": {
+				"Handler": "server::server.Functions::OnConnect",
+				"Runtime": "dotnetcore2.1",
+				"CodeUri": "",
+				"MemorySize": 256,
+				"Role": null,
+				"Policies": [ "AWSLambdaBasicExecutionRole" ]
+			}
+		},
+		"OnConnectPermission": {
+			"Type": "AWS::Lambda::Permission",
+			"DependsOn": [
+				"ReactChat",
+				"OnConnectFunction"
+			],
+			"Properties": {
+				"Action": "lambda:InvokeFunction",
+				"FunctionName": {"Ref": "OnConnectFunction"},
+				"Principal": "apigateway.amazonaws.com"
+			}
+		}
+	},
+
+	"Outputs" : {
+		"WebSocketUrl" : {
+			"Description" : "API endpoint URL for Prod environment",
+			"Value" : { "Fn::Sub" : "wss://${ReactChat}.execute-api.${AWS::Region}.amazonaws.com/Prod/" }
+		}
+	}
+}
